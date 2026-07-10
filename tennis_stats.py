@@ -1,6 +1,6 @@
 import pandas as pd
 MINIMUM_MATCHES = 20
-df = pd.read_csv('atp_tennis.csv')
+df = pd.read_csv('data/atp_tennis.csv')
 
 def get_h2h(df, p1, p2):
     head_to_head = df[((df['Player_1'] == p1) & (df['Player_2'] == p2)) | ((df['Player_1'] == p2) & (df['Player_2'] == p1))]
@@ -8,7 +8,10 @@ def get_h2h(df, p1, p2):
     return counts
 
 def get_surface_performance(df,p,surface):
-    fil = df[((df['Player_1'] == p) | (df['Player_2'] == p)) & (df['Surface'] == surface)]
+    if surface == "All":
+        fil = df[((df['Player_1'] == p) | (df['Player_2'] == p))]
+    else:
+        fil = df[((df['Player_1'] == p) | (df['Player_2'] == p)) & (df['Surface'] == surface)]
 
     wins = len(fil[fil['Winner'] == p])
     matches = len(fil)
@@ -83,7 +86,7 @@ def get_player_stats(df,p):
 # on_form_number controls how MANY players to list
 def get_on_form_players(df, surface = None, on_form_number = 10):
 
-    if surface:
+    if surface and surface != "All":
         fil = df[df["Surface"] == surface]
     else:
         fil = df.copy()
@@ -130,7 +133,7 @@ def get_favourites(df, tournament):
     most_recent_ranks = candidate_fil.groupby('Player').last()  
     candidates = most_recent_ranks[most_recent_ranks["Rank"] <= 100]
     candidates = candidates.sort_values("Rank")
-    print(candidates.head(10))
+    #print(candidates.head(10))
 
     # slim candidate history to mast 3 months for recent form
 

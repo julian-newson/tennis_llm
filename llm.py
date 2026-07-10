@@ -29,13 +29,140 @@ def classify_intent(query):
 
     return intent
 
+
+def extract_entities(query, intent):
+    if intent == "h2h":
+
+        prompt = f"""
+        From the query extract the 2 players in the head-to-head question, and return them
+        in the form player_1,player_2. If unable to do this return the word unknown
+
+        The query is: {query}
+        """
+
+        response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+        )
+
+        players = response.choices[0].message.content
+        if players == "unknown":
+            return None
+        player1, player2 = players.split(",")
+        players_dict = {"player_1": player1.strip(), "player_2": player2.strip()}
+        return players_dict
+    
+    elif intent == "surface_performance":
+
+        prompt = f"""
+        From the query extract the player and the surface, and return them
+        in the form player,surface. 
+        If no surface mentioned or all surfaces mentioned return: player,all
+        If unable to identify player then return the word unknown
+
+        The query is: {query}
+        """
+
+        response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+        )
+
+        surface_data = response.choices[0].message.content
+        if surface_data == "unknown":
+            return None
+        player, surface = surface_data.split(",")
+        surface = surface.capitalize()
+        surface_dict = {"player": player.strip(), "surface": surface.strip()}
+        return surface_dict
+    
+    elif intent == "player_stats":
+
+        prompt = f"""
+        From the query extract player name and return only that.
+        If unable to identify player then return the word unknown
+
+        The query is: {query}
+        """
+
+        response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+        )
+
+        player = response.choices[0].message.content
+        if player == "unknown":
+            return None
+        stats_dict = {"player": player.strip()}
+        return stats_dict
+
+    elif intent == "on_form_players":
+
+        prompt = f"""
+        From the query extract the surface if given and return just the surface name.
+        If no surface mentioned or all surfaces mentioned return the word all
+        
+
+        The query is: {query}
+        """
+
+        response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+        )
+
+        surface = response.choices[0].message.content
+        surface = surface.capitalize()
+        on_form_dict = {"surface": surface.strip()}
+        return on_form_dict
+
+    elif intent == "tournament_favourites":
+
+        prompt = f"""
+        From the query extract the tournament name and return only that.
+        If unable to identify tournament then return the word unknown
+
+        The query is: {query}
+        """
+
+        response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+        )
+
+        tournament_name = response.choices[0].message.content
+        if tournament_name == "unknown":
+            return None
+        tournament_favourites_dict = {"tournament": tournament_name.strip()}
+        return tournament_favourites_dict
+
+    else:
+        return None
+
+
+
+
+
 if __name__ == "__main__":
     q1 = "who wins in Zverev vs taylor fritz?"
-    q2 = "how does Djokovic perform on grass"
+    q2 = "how does Novak Djokovic perform on grass"
     q3 = "nadal statistics"
     q4 = "who is playing well right now?"
     q5 = "who are the wimbledon favourites?"
     q6 = "what time is it?"
     
     for q in [q1,q2,q3,q4,q5,q6]:
-        print(classify_intent(q))
+        intent = classify_intent(q)
+        print(extract_entities(q, intent))
+
+    
