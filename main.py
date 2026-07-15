@@ -5,82 +5,91 @@ import pandas as pd
 
 def handle_query(df, query, history = [], cache = None):
     
-    if cache is None:
-        cache = {}
+    try:
+        if cache is None:
+            cache = {}
 
 
-    print(query)
-    # 1) classify intent
+        print(query)
+        # 1) classify intent
 
-    intent = classify_intent(query, history)
+        intent = classify_intent(query, history)
 
-    print(f"intent: {intent}")
-    # 2) extract the entities
+        print(f"intent: {intent}")
+        # 2) extract the entities
 
-    entities = extract_entities(df, query, intent)
+        entities = extract_entities(df, query, intent)
 
-    print(f"entities: {entities}")
-    if entities is None:
-        result = "I couldn't understand your query, please try rephrasing."
+        print(f"entities: {entities}")
+        if entities is None:
+            result = "I couldn't understand your query, please try rephrasing."
+            return query, result
+        #3 ) if entities contain a name then resolve name
+
+        if entities:
+            for key in entities:
+                if key in ["player", "player_1", "player_2"]:
+                    potential_player = find_player(entities[key], df)
+
+                    if isinstance(potential_player, list):
+                        return query, f"Multiple players found, did you mean: {', '.join(potential_player)}?"
+                    elif potential_player is None:
+                        return query, f"Could not find player: {entities[key]}, please try again"
+                    else:
+                        entities[key] = potential_player
+
+            #print(f"Resolved name: {entities}")
+
+
+        cache_key = f"{intent}_{str(entities)}"
+
+        # check if intent-entity pair is already in cache
+        cached_result = None
+        if cache_key in cache:
+            cached_result = cache[cache_key]
+            print("hit")
+
+        if cached_result is None:
+    
+            if intent == "h2h":
+                result = get_h2h(df, entities["player_1"], entities["player_2"])
+            elif intent == "surface_performance":
+                # surface is either specific/all
+                result = get_surface_performance(df, entities["player"], entities["surface"])
+            elif intent == "player_stats":
+                result = get_player_stats(df, entities["player"])
+            elif intent == "on_form_players":
+                # surface is either specific/all
+                result = get_on_form_players(df, entities["surface"])
+            elif intent == "tournament_favourites":
+                # this gets the data
+                result = get_favourites(df, entities["tournament"])
+            elif intent == "tournament_performance":
+                result = get_tournament_performance(df, entities["player"], entities["tournament"])
+            elif intent == "unknown":
+                result =  """I can only answer questions on the following topics: 
+                head to head records, a player's surface performance, player stats, on-form players and tournament favourites."""
+            else:
+                result = "Something went wrong, please try again."
+
+            if intent != "unknown":
+                cache[cache_key] = result
+            
+
+        else:
+            result = cached_result
+
+        print(f"Result: {result}")
+        #print(f"Cache: {cache}")
         return query, result
-    #3 ) if entities contain a name then resolve name
-
-    if entities:
-        for key in entities:
-            if key in ["player", "player_1", "player_2"]:
-                potential_player = find_player(entities[key], df)
-
-                if isinstance(potential_player, list):
-                    return query, f"Multiple players found, did you mean: {', '.join(potential_player)}?"
-                elif potential_player is None:
-                    return query, f"Could not find player: {entities[key]}, please try again"
-                else:
-                    entities[key] = potential_player
-
-        #print(f"Resolved name: {entities}")
-
-
-    cache_key = f"{intent}_{str(entities)}"
-
-    # check if intent-entity pair is already in cache
-    cached_result = None
-    if cache_key in cache:
-        cached_result = cache[cache_key]
-        print("hit")
-
-    if cached_result is None:
- 
-        if intent == "h2h":
-            result = get_h2h(df, entities["player_1"], entities["player_2"])
-        elif intent == "surface_performance":
-            # surface is either specific/all
-            result = get_surface_performance(df, entities["player"], entities["surface"])
-        elif intent == "player_stats":
-            result = get_player_stats(df, entities["player"])
-        elif intent == "on_form_players":
-            # surface is either specific/all
-            result = get_on_form_players(df, entities["surface"])
-        elif intent == "tournament_favourites":
-            # this gets the data
-            result = get_favourites(df, entities["tournament"])
-        elif intent == "tournament_performance":
-            result = get_tournament_performance(df, entities["player"], entities["tournament"])
-        elif intent == "unknown":
-            result =  """I can only answer questions on the following topics: 
-            head to head records, a player's surface performance, player stats, on-form players and tournament favourites."""
+    # error messages either due to rate limiting or general error message
+    except Exception as e:
+        if "rate_limit" in str(e):
+            result = "Too many requests — please wait a moment and try again."
         else:
             result = "Something went wrong, please try again."
 
-        if intent != "unknown":
-            cache[cache_key] = result
-        
-
-    else:
-        result = cached_result
-
-    print(f"Result: {result}")
-    print(f"Cache: {cache}")
-    return query, result
+        return query, result
 
 
 
@@ -112,6 +121,6 @@ if __name__ == "__main__":
     q11 = "alcaraz wimbledon"
     q12 = "murray roland garros"
     q13 = "who are the roland garros favourites"
-    qs= [q13, q13]
+    qs= [q13]
     for q in qs:
         handle_query(df, q)

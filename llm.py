@@ -1,4 +1,4 @@
-from llm_client import client
+from llm_client import client, safe_llm_call
 from name_matching import match_tournament
 
 def classify_intent(query, history = []):
@@ -26,11 +26,7 @@ def classify_intent(query, history = []):
 
     # user here means the user's message 
 
-    response = client.chat.completions.create(
-    model="llama-3.3-70b-versatile",
-    messages=messages
- 
-    )
+    response = safe_llm_call(messages, False)
 
     intent = response.choices[0].message.content
 
@@ -61,11 +57,10 @@ def classify_intent_batch(queries):
     Queries: {numbered_queries}
     """
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    
+    messages=[{"role": "user", "content": prompt}]
+    response = safe_llm_call(messages, False)
+
+
     # split output string by line to get lines
     lines = response.choices[0].message.content.strip().split("\n")
     intents = []
@@ -113,11 +108,9 @@ def extract_entities(df, query, intent):
 
         The query is: {query}
         """
-       # messages.append({"role": "user", "content": prompt})
-        response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+
         messages = [{"role": "user", "content": prompt}]
-        )
+        response = safe_llm_call(messages, False)
 
         players = response.choices[0].message.content
         if players == "unknown":
@@ -137,11 +130,10 @@ def extract_entities(df, query, intent):
 
         The query is: {query}
         """
-     #   messages.append({"role": "user", "content": prompt})
-        response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+
         messages = [{"role": "user", "content": prompt}]
-        )
+        response = safe_llm_call(messages, False)
+       
 
         surface_data = response.choices[0].message.content
         if surface_data == "unknown":
@@ -162,11 +154,10 @@ def extract_entities(df, query, intent):
 
         The query is: {query}
         """
-      #  messages.append({"role": "user", "content": prompt})
-        response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+
         messages = [{"role": "user", "content": prompt}]
-        )
+        response = safe_llm_call(messages, False)
+
 
         player = response.choices[0].message.content
         if player == "unknown":
@@ -185,11 +176,8 @@ def extract_entities(df, query, intent):
 
         The query is: {query}
         """
-       # messages.append({"role": "user", "content": prompt})
-        response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
         messages = [{"role": "user", "content": prompt}]
-        )
+        response = safe_llm_call(messages, False)
 
         surface = response.choices[0].message.content
         surface = surface.capitalize()
@@ -210,11 +198,8 @@ def extract_entities(df, query, intent):
 
         The query is: {query}
         """
-     #   messages.append({"role": "user", "content": prompt})
-        response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
         messages = [{"role": "user", "content": prompt}]
-        )
+        response = safe_llm_call(messages, False)
 
         tournament_name = response.choices[0].message.content
 
@@ -242,11 +227,8 @@ def extract_entities(df, query, intent):
 
         The query is: {query}
         """
-     #   messages.append({"role": "user", "content": prompt})
-        response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
         messages = [{"role": "user", "content": prompt}]
-        )
+        response = safe_llm_call(messages, False)
 
         player_tournament_data = response.choices[0].message.content
         if player_tournament_data == "unknown":
@@ -294,12 +276,9 @@ def format_response(query, result, history):
     messages.append({"role": "user", "content": prompt})
 
     # we give LLM a chat history: old prompts without data, and latest prompt WITH data (old data is engrained into old responses)
-    response = client.chat.completions.create(
-    model="llama-3.3-70b-versatile",
-    messages=messages,
-    stream = True
-    )
-
+            
+    response = safe_llm_call(messages, True)
+    
     # loop through each data chunk
     # if it contains text extract text and send to caller
     # delta means new data added in this chunk

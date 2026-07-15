@@ -1,5 +1,5 @@
 import pandas as pd
-from llm_client import client
+from llm_client import client, safe_llm_call
 from rapidfuzz import process
 
 def find_player(query, df):
@@ -31,13 +31,9 @@ def find_player(query, df):
         The query is: {query}
         """
 
-        response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-        )
-
+        messages = [{"role": "user", "content": prompt}]
+        response = safe_llm_call(messages, False)
+ 
         player_name = response.choices[0].message.content
 
         # final fuzzy safety net
