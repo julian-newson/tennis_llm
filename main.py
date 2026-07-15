@@ -3,8 +3,12 @@ from tennis_stats import get_h2h, get_surface_performance, get_player_stats, get
 from name_matching import find_player
 import pandas as pd
 
-def handle_query(df, query, history = []):
+def handle_query(df, query, history = [], cache = None):
     
+    if cache is None:
+        cache = {}
+
+
     print(query)
     # 1) classify intent
 
@@ -35,30 +39,47 @@ def handle_query(df, query, history = []):
 
         #print(f"Resolved name: {entities}")
 
-    #4 ) call right function
-    #print(df['Tournament'].unique())
-    if intent == "h2h":
-        result = get_h2h(df, entities["player_1"], entities["player_2"])
-    elif intent == "surface_performance":
-        # surface is either specific/all
-        result = get_surface_performance(df, entities["player"], entities["surface"])
-    elif intent == "player_stats":
-        result = get_player_stats(df, entities["player"])
-    elif intent == "on_form_players":
-        # surface is either specific/all
-        result = get_on_form_players(df, entities["surface"])
-    elif intent == "tournament_favourites":
-        # this gets the data
-        result = get_favourites(df, entities["tournament"])
-    elif intent == "tournament_performance":
-        result = get_tournament_performance(df, entities["player"], entities["tournament"])
-    elif intent == "unknown":
-        result =  """I can only answer questions on the following topics: 
-        head to head records, a player's surface performance, player stats, on-form players and tournament favourites."""
+
+    cache_key = f"{intent}_{str(entities)}"
+
+    # check if intent-entity pair is already in cache
+    cached_result = None
+    if cache_key in cache:
+        cached_result = cache[cache_key]
+        print("hit")
+
+    if cached_result is None:
+ 
+        if intent == "h2h":
+            result = get_h2h(df, entities["player_1"], entities["player_2"])
+        elif intent == "surface_performance":
+            # surface is either specific/all
+            result = get_surface_performance(df, entities["player"], entities["surface"])
+        elif intent == "player_stats":
+            result = get_player_stats(df, entities["player"])
+        elif intent == "on_form_players":
+            # surface is either specific/all
+            result = get_on_form_players(df, entities["surface"])
+        elif intent == "tournament_favourites":
+            # this gets the data
+            result = get_favourites(df, entities["tournament"])
+        elif intent == "tournament_performance":
+            result = get_tournament_performance(df, entities["player"], entities["tournament"])
+        elif intent == "unknown":
+            result =  """I can only answer questions on the following topics: 
+            head to head records, a player's surface performance, player stats, on-form players and tournament favourites."""
+        else:
+            result = "Something went wrong, please try again."
+
+        if intent != "unknown":
+            cache[cache_key] = result
+        
+
     else:
-        result = "Something went wrong, please try again."
+        result = cached_result
 
     print(f"Result: {result}")
+    print(f"Cache: {cache}")
     return query, result
 
 
@@ -91,6 +112,6 @@ if __name__ == "__main__":
     q11 = "alcaraz wimbledon"
     q12 = "murray roland garros"
     q13 = "who are the roland garros favourites"
-    qs= [q13]
+    qs= [q13, q13]
     for q in qs:
         handle_query(df, q)
