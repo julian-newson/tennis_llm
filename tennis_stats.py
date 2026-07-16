@@ -4,12 +4,18 @@ ON_FORM_NUMBER = 3
 df = pd.read_csv('data/atp_tennis.csv')
 
 def get_h2h(df, p1, p2):
+    if len(df) == 0:
+        return None
     head_to_head = df[((df['Player_1'] == p1) & (df['Player_2'] == p2)) | ((df['Player_1'] == p2) & (df['Player_2'] == p1))]
     counts = head_to_head['Winner'].value_counts()
     #print(f"counts: {counts}")
     return counts
 
 def get_surface_performance(df,p,surface):
+
+    if len(df) == 0:
+        return None
+
     if surface == "All":
         fil = df[((df['Player_1'] == p) | (df['Player_2'] == p))]
 
@@ -41,6 +47,9 @@ def get_surface_performance(df,p,surface):
         return surface_performance_dict
 
 def get_player_stats(df,p):
+
+    if len(df) == 0:
+        return None
     # get win rate
     fil = df[((df['Player_1'] == p) | (df['Player_2'] == p))]
 
@@ -104,7 +113,7 @@ def get_player_stats(df,p):
     tournament_win_rates = fil.groupby('Tournament')['won'].agg(mean="mean", count="count")
     tournament_win_rates = tournament_win_rates[tournament_win_rates['count'] >= minimum_matches]
     if len(tournament_win_rates) == 0:
-        best_tournament_dict = 0
+        best_tournament_dict = None
     else:
         best_tournament = tournament_win_rates["mean"].idxmax()
         best_tournament_win_rate = float(round((tournament_win_rates["mean"].max() * 100),1))
@@ -128,6 +137,8 @@ def get_player_stats(df,p):
 # on_form_number controls how MANY players to list
 def get_on_form_players(df, surface = None, on_form_number = ON_FORM_NUMBER):
 
+    if len(df) == 0:
+        return None
     if surface and surface != "All":
         fil = df[df["Surface"] == surface]
     else:
@@ -152,7 +163,8 @@ def get_on_form_players(df, surface = None, on_form_number = ON_FORM_NUMBER):
     return player_forms.head(on_form_number)
 
 def get_favourites(df, tournament):
-
+    if len(df) == 0:
+        return None
     # get tournament's surface by getting surface of most recent tournament of its kind
 
     tournament_fil = df[(df["Tournament"] == tournament)]
@@ -267,6 +279,8 @@ def get_favourites(df, tournament):
     return favourites
 
 def get_tournament_performance(df, p, tournament):
+    if len(df) == 0:
+        return None
     tournament_fil = df[((df['Player_1'] == p) | (df['Player_2'] == p)) & (df['Tournament'] == tournament)]
     tournament_matches = len(tournament_fil)
     if tournament_matches == 0:
@@ -277,3 +291,4 @@ def get_tournament_performance(df, p, tournament):
     tournament_performance_dict["tournament_win_percentage"] = tournament_win_rate
     tournament_performance_dict["tournament_matches"] = tournament_matches
     return tournament_performance_dict
+

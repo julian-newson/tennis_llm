@@ -1,9 +1,9 @@
 from llm import classify_intent, extract_entities
 from tennis_stats import get_h2h, get_surface_performance, get_player_stats, get_on_form_players, get_favourites, get_tournament_performance
-from name_matching import find_player
+from name_matching import find_player, get_unique_players, get_unique_tournaments
 import pandas as pd
 
-def handle_query(df, query, history = [], cache = None):
+def handle_query(df, query, unique_players, unique_tournaments, history = [], cache = None):
     
     try:
         if cache is None:
@@ -18,27 +18,43 @@ def handle_query(df, query, history = [], cache = None):
         print(f"intent: {intent}")
         # 2) extract the entities
 
-        entities = extract_entities(df, query, intent)
+        if intent == "unknown":
+            result = """I can only answer questions about the ATP tour on 
+                        head-to-head records, player surface performance, player stats, on-form players, 
+                        tournament favourites or player tournament performance."""
+            return query, result
+        
+        # will either contain last assistant message OR be empty
+        
+        if len(history) >= 2: 
+            last_message = history[-2]["content"]
+        else:
+            last_message = None
+
+        entities = extract_entities(query, intent, unique_tournaments, last_message)
 
         print(f"entities: {entities}")
+
         if entities is None:
-            result = "I couldn't understand your query, please try rephrasing."
+            result = "An error occurred in extracting entities"
             return query, result
         #3 ) if entities contain a name then resolve name
 
         if entities:
             for key in entities:
                 if key in ["player", "player_1", "player_2"]:
-                    potential_player = find_player(entities[key], df)
+                    potential_player = find_player(entities[key], df, unique_players)
 
                     if isinstance(potential_player, list):
-                        return query, f"Multiple players found, did you mean: {', '.join(potential_player)}?"
+                        result = f"Multiple players found, did you mean: {', '.join(potential_player)}?"
+                        return query, result
                     elif potential_player is None:
-                        return query, f"Could not find player: {entities[key]}, please try again"
+                        result = f"Could not find player: {entities[key]}, please try again"
+                        return query, result
                     else:
                         entities[key] = potential_player
 
-            #print(f"Resolved name: {entities}")
+            print(f"Resolved name: {entities}")
 
 
         cache_key = f"{intent}_{str(entities)}"
@@ -47,7 +63,7 @@ def handle_query(df, query, history = [], cache = None):
         cached_result = None
         if cache_key in cache:
             cached_result = cache[cache_key]
-            print("hit")
+            #print("hit")
 
         if cached_result is None:
     
@@ -66,26 +82,24 @@ def handle_query(df, query, history = [], cache = None):
                 result = get_favourites(df, entities["tournament"])
             elif intent == "tournament_performance":
                 result = get_tournament_performance(df, entities["player"], entities["tournament"])
-            elif intent == "unknown":
-                result =  """I can only answer questions on the following topics: 
-                head to head records, a player's surface performance, player stats, on-form players and tournament favourites."""
+    
             else:
-                result = "Something went wrong, please try again."
+                # system error
+                result = "An error occurred in classifying intent"
 
-            if intent != "unknown":
-                cache[cache_key] = result
+            cache[cache_key] = result
             
-
         else:
             result = cached_result
 
-        print(f"Result: {result}")
+        #print(f"Result: {result}")
         #print(f"Cache: {cache}")
         return query, result
     # error messages either due to rate limiting or general error message
     except Exception as e:
+        print(f"ERROR: {e}")
         if "rate_limit" in str(e):
-            result = "Too many requests — please wait a moment and try again."
+            result = "Too many requests - please wait a moment and try again."
         else:
             result = "Something went wrong, please try again."
 
@@ -105,6 +119,9 @@ def handle_query(df, query, history = [], cache = None):
 # if run file directly, for testing
 if __name__ == "__main__":
     df = pd.read_csv("data/atp_tennis.csv")
+    unique_players = get_unique_players(df)
+    unique_tournaments = get_unique_tournaments(df)
+
 
     q1 = "who wins in A.Zverev vs taylor fritz?"
     q2 = "how does Novak Djokovic perform on grass"
@@ -112,15 +129,21 @@ if __name__ == "__main__":
     q4 = "who is playing well right now?"
     q5 = "who are the wimbledon favourites?"
     q6 = "what time is it?"
-    #qs = [q1,q2,q3,q4,q5,q6]
-
     q7 = "broady vs ruud"
     q8 = "liam broady clay"
     q9 = "liam broady stats"
-    q10 = "alcaraz surface"
-    q11 = "alcaraz wimbledon"
+    q10 = "best players rn"
+    q11 = "who are the roland garros favourites"
     q12 = "murray roland garros"
-    q13 = "who are the roland garros favourites"
-    qs= [q13]
+    q13 = "djokovic height"
+
+    q14 = "zverev stats"
+    q15 = "serena williams stats"
+    q16 = "john mcenroe stats"
+    q17 = "rafael nadal stats"
+    q18 = "norrie tournament performance at bastad open"
+    q19 = "norrie surface performance"
+    qs= [q11]
     for q in qs:
-        handle_query(df, q)
+        query, result = handle_query(df, q, unique_players, unique_tournaments)
+        print(result)

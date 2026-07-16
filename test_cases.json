@@ -240,7 +240,7 @@
   },
   {
     "query": "Who has the best hard court record among active ATP players, and what's their strategy on this surface?",
-    "expected_intent": "surface_performance",
+    "expected_intent": "unknown",
     "source": "llm"
   },
   {
@@ -265,7 +265,7 @@
   },
   {
     "query": "Are there any players who have consistently performed well across all surfaces in the ATP tour, and what makes their game so adaptable?",
-    "expected_intent": "surface_performance",
+    "expected_intent": "unknown",
     "source": "llm"
   },
   {
@@ -290,7 +290,7 @@
   },
   {
     "query": "Who has the best winning percentage in Grand Slam tournaments among active players?",
-    "expected_intent": "player_stats",
+    "expected_intent": "unknown",
     "source": "llm"
   },
   {

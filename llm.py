@@ -92,7 +92,7 @@ def classify_intent_batch(queries):
 
 
 
-def extract_entities(df, query, intent):
+def extract_entities(query, intent, unique_tournaments, last_message = None):
     """
     messages = []
     for message in history:
@@ -101,12 +101,13 @@ def extract_entities(df, query, intent):
     if intent == "h2h":
 
         prompt = f"""
-        From the query extract the 2 players in the head-to-head question, and return ONLY them in the form: 
+        From the query and last message extract the 2 players in the head-to-head question, and return ONLY them in the form: 
         player_1,player_2 
         Do not add any explanation.
         If unable to do this return the word unknown
 
-        The query is: {query}
+        query: {query}
+        last message: {last_message}
         """
 
         messages = [{"role": "user", "content": prompt}]
@@ -122,13 +123,14 @@ def extract_entities(df, query, intent):
     elif intent == "surface_performance":
 
         prompt = f"""
-        From the query extract the player and the surface, and return them ONLY in the form: 
+        From the query and last message extract the player and the surface, and return them ONLY in the form: 
         player,surface 
         Do not add any explanation
         If no surface mentioned or all surfaces mentioned return: player,all
         If unable to identify player then return the word unknown
 
-        The query is: {query}
+        query: {query}
+        last message: {last_message}
         """
 
         messages = [{"role": "user", "content": prompt}]
@@ -147,12 +149,13 @@ def extract_entities(df, query, intent):
     elif intent == "player_stats":
 
         prompt = f"""
-        From the query extract player name and return ONLY in the form:
+        From the query and last message extract player name and return ONLY in the form:
         player_name
         Without adding any explanation
         If unable to identify player then return the word unknown
 
-        The query is: {query}
+        query: {query}
+        last message: {last_message}
         """
 
         messages = [{"role": "user", "content": prompt}]
@@ -168,13 +171,14 @@ def extract_entities(df, query, intent):
     elif intent == "on_form_players":
 
         prompt = f"""
-        From the query extract the surface if given and return the surface name ONLY in the form:
+        From the query and last message extract the surface if given and return the surface name ONLY in the form:
         surface_name
         Without adding any explanation
         If no surface mentioned or all surfaces mentioned return the word all
         
 
-        The query is: {query}
+        query: {query}
+        last message: {last_message}
         """
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
@@ -186,23 +190,22 @@ def extract_entities(df, query, intent):
 
     elif intent == "tournament_favourites":
 
-        unique_tournaments = df['Tournament'].unique().tolist()
-
         prompt = f"""
-        From the query match the tournament name EXACTLY to the closest one from this list:
+        From the query and last message match the tournament name EXACTLY to the closest one from this list:
         {unique_tournaments} 
         Return ONLY the matched tournament name in the form:
         tournament_name
         Without adding any explanation
         If unable to identify tournament then return the word unknown
 
-        The query is: {query}
+        query: {query}
+        last message: {last_message}
         """
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
 
         tournament_name = response.choices[0].message.content
-
+        #print(f"tournament name: {tournament_name}")
         # fuzzy match it as a safety fallback
 
         tournament_name_match = match_tournament(tournament_name, unique_tournaments)
@@ -215,17 +218,16 @@ def extract_entities(df, query, intent):
 
     elif intent == "tournament_performance":
 
-        unique_tournaments = df['Tournament'].unique().tolist()
-
         prompt = f"""
-        From the query extract the player and match the tournament name EXACTLY to the closest one from this list:
+        From the query and last message extract the player and match the tournament name EXACTLY to the closest one from this list:
         {unique_tournaments} 
         Return them ONLY in the form:
         player,tournament_name
         Without adding any explanation
         If unable to identify the player or tournament then return the word unknown
 
-        The query is: {query}
+        query: {query}
+        last message: {last_message}
         """
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
@@ -256,13 +258,10 @@ def format_response(query, result, history):
     print(f"RECEIVED: {query}, {result}")
     # prompt = ORIGINAL QUERY + DATA
     prompt = f"""
-    Based on the original query generate a natural conversation respons using the data below.
-    Be concise, use all provided data, and don't use any data not provided.
-    For player names ensure to you their full name
-    If the query is about tournament favourites emphasise who is the number one favourite.
-    If the result received is not data and instead a default message as original query was not classified,
-    ensure to mention you can only help for men's ATP tour only and the topics the default message includes.
-    If you receive the message that something went wrong, only output that message.
+    Based on the original query generate a natural conversational response using ONLY the data below.
+
+    If receive any other result message then output the EXACT same result message
+    
 
     The original query is: {query}
     The data is: {result}
