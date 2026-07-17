@@ -1,11 +1,23 @@
+"""
+app.py
+
+Streamlit web interface for the ATP Tennis Statistics Assistant.
+Handles user input, displays chat history and streams LLM responses.
+"""
+
 import streamlit as st
 from main import handle_query
 from llm import format_response
 from name_matching import get_unique_players, get_unique_tournaments
 import pandas as pd
 
-df = pd.read_csv("data/atp_tennis.csv")
+try:
+    df = pd.read_csv("data/atp_tennis.csv")
+except FileNotFoundError:
+    st.error("Data file not found. Please ensure data/atp_tennis.csv exists.")
+    st.stop()
 
+# precompute at startup to avoid recalculating on every query
 unique_players = get_unique_players(df)
 unique_tournaments = get_unique_tournaments(df)
 
@@ -16,9 +28,7 @@ st.caption("""e.g. • head-to-head records • surface performance of a player
            • player statistics • on-form players • tournament favourites • player performance at a specific tournament""")
 st.caption("Examples: How does Alcaraz perform on clay? • Who wins Djokovic vs Federer? • Who are the Wimbledon favourites?")
 
-
-
-
+# initialise session state on first load
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -30,24 +40,17 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.write(message["content"])
 
-
-
 query = st.chat_input("Ask me anything about ATP tennis")
 if query:
-
-
     with st.chat_message("user"):
         st.write(query)
-
+    # upon asking the LLM a question
     with st.chat_message("assistant"):
         with st.spinner("Generating"):
             query, result = handle_query(df, query, unique_players, unique_tournaments, st.session_state.messages, st.session_state.cache)
         response = st.write_stream(format_response(query, result, st.session_state.messages))
-
     st.session_state.messages.append({"role": "user", "content": query})
     st.session_state.messages.append({"role": "assistant", "content": response})
-
-
 
 if st.button("Clear chat"):
     st.session_state.messages = []

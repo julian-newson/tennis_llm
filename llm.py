@@ -1,7 +1,36 @@
-from llm_client import client, safe_llm_call
+"""
+llm.py
+
+LLM-powered functions for the ATP Tennis Statistics Assistant pipeline.
+
+Contains three core components:
+    - Intent classification: determines query type (h2h, surface_performance, etc.)
+      using Llama 3.3 70B via Groq API with conversation history for context
+    - Entity extraction: extracts relevant entities (players, surfaces, tournaments)
+      from user queries, using last message context for pronoun resolution
+    - Response formatting: converts raw data dictionaries into natural language
+      responses using streaming for real-time output
+
+Also includes classify_intent_batch() for efficient bulk evaluation testing.
+"""
+
+from llm_client import safe_llm_call
 from name_matching import match_tournament
 
 def classify_intent(query, history = []):
+
+    """
+    Classifies a user query into one of 7 intents using the LLM.
+
+    Args:
+        query: User's natural language query
+        history: List of previous conversation messages for context, defaults to []
+
+    Returns:
+        Intent string, one of: 'h2h', 'surface_performance', 'player_stats',
+        'on_form_players', 'tournament_favourites', 'tournament_performance', 'unknown'
+    """
+
     intent_descriptions = {
     "h2h": "general head to head record between two players only across all tournaments",
     "surface_performance": "how a player performs on a specific surface or all surfaces",
@@ -22,17 +51,24 @@ def classify_intent(query, history = []):
         messages.append({"role": message["role"], "content": message["content"]})
     
     messages.append({"role": "user", "content": prompt})
-
-
-    # user here means the user's message 
-
     response = safe_llm_call(messages, False)
-
     intent = response.choices[0].message.content
 
     return intent
 
 def classify_intent_batch(queries):
+
+    """
+    Classifies multiple queries in a single API call for evaluation efficiency.
+    Used by the evaluation framework instead of calling classify_intent() per query.
+
+    Args:
+        queries: List of query strings to classify
+
+    Returns:
+        List of intent strings in the same order as input queries
+        e.g. ['h2h', 'surface_performance', 'unknown']
+    """
 
     intent_descriptions = {
     "h2h": "general head to head record between two players only across all tournaments",
@@ -44,6 +80,7 @@ def classify_intent_batch(queries):
     "unknown": "questions about rankings, grand slam titles, prize money, coaching, playing style, or anything not covered by the other intents"
     }   
 
+    # number queries for positional matching in response
     numbered_queries = ""
     for i, query in enumerate(queries):
         numbered_queries += f"\n{i+1}. {query}"
@@ -60,46 +97,43 @@ def classify_intent_batch(queries):
     messages=[{"role": "user", "content": prompt}]
     response = safe_llm_call(messages, False)
 
-
-    # split output string by line to get lines
+    # parse numbered response into list, stripping "1. " prefixes
     lines = response.choices[0].message.content.strip().split("\n")
     intents = []
     for line in lines:
         if line.strip():
             intents.append(line.split(". ", 1)[1].strip())
     
+    # fallback to individual classification if batch response is malformed
+    if len(intents) != len(queries):
+        return [classify_intent(q) for q in queries]
+
     return intents
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def extract_entities(query, intent, unique_tournaments, last_message = None):
-    """
-    messages = []
-    for message in history:
-        messages.append({"role": message["role"], "content": message["content"]})
-    """
-    if intent == "h2h":
 
+    """
+    Extracts relevant entities from a user query based on the classified intent.
+    Uses last message for pronoun resolution e.g. 'him' -> player from previous query.
+
+    Args:
+        query: User's natural language query
+        intent: Classified intent string e.g. 'h2h', 'surface_performance'
+        unique_tournaments: Precomputed list of valid tournament names for matching
+        last_message: Previous user message for pronoun context, defaults to None
+
+    Returns:
+        Dict of extracted entities, structure depends on intent:
+            - h2h: {'player_1': str, 'player_2': str}
+            - surface_performance: {'player': str, 'surface': str}
+            - player_stats: {'player': str}
+            - on_form_players: {'surface': str}
+            - tournament_favourites: {'tournament': str}
+            - tournament_performance: {'player': str, 'tournament': str}
+        None if entities cannot be extracted or intent not recognised
+    """
+
+    if intent == "h2h":
         prompt = f"""
         From the query and last message extract the 2 players in the head-to-head question, and return ONLY them in the form: 
         player_1,player_2 
@@ -112,16 +146,17 @@ def extract_entities(query, intent, unique_tournaments, last_message = None):
 
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
-
         players = response.choices[0].message.content
         if players == "unknown":
             return None
-        player1, player2 = players.split(",", 1)
+        parts = players.split(",", 1)
+        if len(parts) != 2:
+            return None
+        player1, player2 = parts
         players_dict = {"player_1": player1.strip(), "player_2": player2.strip()}
         return players_dict
     
     elif intent == "surface_performance":
-
         prompt = f"""
         From the query and last message extract the player and the surface, and return them ONLY in the form: 
         player,surface 
@@ -135,33 +170,30 @@ def extract_entities(query, intent, unique_tournaments, last_message = None):
 
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
-       
-
         surface_data = response.choices[0].message.content
         if surface_data == "unknown":
             return None
-        #print(surface_data)
-        player, surface = surface_data.split(",", 1)
+        parts = surface_data.split(",", 1)
+        if len(parts) != 2:
+            return None
+        player, surface = parts
+        # capitalize surface to match dataset format e.g. 'clay' -> 'Clay'
         surface = surface.capitalize()
         surface_dict = {"player": player.strip(), "surface": surface.strip()}
         return surface_dict
     
     elif intent == "player_stats":
-
         prompt = f"""
-        From the query and last message extract player name and return ONLY in the form:
+        From the query and extract player name and return ONLY in the form:
         player_name
         Without adding any explanation
         If unable to identify player then return the word unknown
 
         query: {query}
-        last message: {last_message}
         """
 
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
-
-
         player = response.choices[0].message.content
         if player == "unknown":
             return None
@@ -169,20 +201,16 @@ def extract_entities(query, intent, unique_tournaments, last_message = None):
         return stats_dict
 
     elif intent == "on_form_players":
-
         prompt = f"""
-        From the query and last message extract the surface if given and return the surface name ONLY in the form:
+        From the query and extract the surface if given and return the surface name ONLY in the form:
         surface_name
         Without adding any explanation
         If no surface mentioned or all surfaces mentioned return the word all
         
-
         query: {query}
-        last message: {last_message}
         """
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
-
         surface = response.choices[0].message.content
         surface = surface.capitalize()
         on_form_dict = {"surface": surface.strip()}
@@ -203,18 +231,13 @@ def extract_entities(query, intent, unique_tournaments, last_message = None):
         """
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
-
         tournament_name = response.choices[0].message.content
-        #print(f"tournament name: {tournament_name}")
         # fuzzy match it as a safety fallback
-
         tournament_name_match = match_tournament(tournament_name, unique_tournaments)
-
         if tournament_name_match is None:
             return None
         tournament_favourites_dict = {"tournament": tournament_name_match}
         return tournament_favourites_dict
-
 
     elif intent == "tournament_performance":
 
@@ -231,38 +254,44 @@ def extract_entities(query, intent, unique_tournaments, last_message = None):
         """
         messages = [{"role": "user", "content": prompt}]
         response = safe_llm_call(messages, False)
-
         player_tournament_data = response.choices[0].message.content
         if player_tournament_data == "unknown":
             return None
-
-        player, tournament_name = player_tournament_data.split(",", 1)
-        
+        parts = player_tournament_data.split(",", 1)
+        if len(parts) != 2:
+            return None
+        player, tournament_name = parts
         tournament_name_match = match_tournament(tournament_name, unique_tournaments)
-
         if tournament_name_match is None:
             return None
-
         player_tournament_dict = {"player": player.strip(), "tournament": tournament_name_match}
         return player_tournament_dict
-
-
-
+    
     else:
         return None
 
-# original query (question) so actually answers the question asked, use result (data) and chat history to make a response
-# format response should technically always have history
+
 def format_response(query, result, history):
 
-    print(f"RECEIVED: {query}, {result}")
-    # prompt = ORIGINAL QUERY + DATA
+    """
+    Formats raw data into a natural language response using streaming.
+
+    Args:
+        query: Original user query for context
+        result: Raw data dict from tennis_stats functions, or error message string
+        history: List of previous conversation messages for context
+
+    Yields:
+        String chunks of the response as they are generated by the LLM
+        Use with st.write_stream() in Streamlit for real-time streaming output
+    """
+
     prompt = f"""
-    Based on the original query generate a natural conversational response using ONLY the data below.
+    Based on the original query generate a natural CONVERSATIONAL response ALWAYS and ONLY using the data below, NOTHING else, DO NOT
+    question the data.
 
     If receive any other result message then output the EXACT same result message
     
-
     The original query is: {query}
     The data is: {result}
     """
@@ -271,13 +300,10 @@ def format_response(query, result, history):
     messages = []
     for message in history:
         messages.append({"role": message["role"], "content": message["content"]})
-    
     messages.append({"role": "user", "content": prompt})
 
     # we give LLM a chat history: old prompts without data, and latest prompt WITH data (old data is engrained into old responses)
-            
     response = safe_llm_call(messages, True)
-    
     # loop through each data chunk
     # if it contains text extract text and send to caller
     # delta means new data added in this chunk

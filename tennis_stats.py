@@ -1,17 +1,52 @@
+"""
+tennis_stats.py
+
+Data retrieval functions for ATP tennis statistics.
+Queries match data from the ATP dataset to answer questions about
+player performance, head to head records, surface performance,
+tournament history and tournament favourites.
+"""
+
 import pandas as pd
 RECENT_WIN_RATE_MATCHES = 20
 ON_FORM_NUMBER = 3
 df = pd.read_csv('data/atp_tennis.csv')
 
 def get_h2h(df, p1, p2):
+    """
+    Returns head-to-head win count between two players
+    
+    args:
+        df: ATP match dataframe
+        p1: Player name in dataset format e.g. 'Djokovic N.'
+        p2: Player name in dataset format e.g. 'Federer R.'
+    
+    Returns:
+        pandas Series with win counts per player/None if df is empty
+    """
+
     if len(df) == 0:
         return None
     head_to_head = df[((df['Player_1'] == p1) & (df['Player_2'] == p2)) | ((df['Player_1'] == p2) & (df['Player_2'] == p1))]
     counts = head_to_head['Winner'].value_counts()
-    #print(f"counts: {counts}")
     return counts
 
 def get_surface_performance(df,p,surface):
+
+    """
+    Returns surface performance for a player including win % and matches played
+    Can be for a specific surface/all surfaces
+    
+    Args:
+        df: ATP match dataframe
+        p: Player name in dataset format e.g. 'Djokovic N.'
+        surface: surface name e.g. 'Clay', 'Grass','All'
+    
+    Returns:
+        For single surface: dict with 'surface_win_percentage' and 'surface_matches'
+        For 'All': dict with each surface as key containing win_rate and matches
+        None if df is empty
+    """
 
     if len(df) == 0:
         return None
@@ -20,6 +55,8 @@ def get_surface_performance(df,p,surface):
         fil = df[((df['Player_1'] == p) | (df['Player_2'] == p))]
 
         surface_performance_dict = {}
+
+        # for each surface get win % and matches
         for surface in ["Grass", "Clay", "Hard", "Carpet"]:
             surface_filter = fil[fil["Surface"] == surface]
             surface_filter_wins = len(surface_filter[surface_filter["Winner"] == p])
@@ -32,6 +69,7 @@ def get_surface_performance(df,p,surface):
                 }
         return surface_performance_dict
     
+    # if specified surface just do it for one surface
     else:
         fil = df[((df['Player_1'] == p) | (df['Player_2'] == p)) & (df['Surface'] == surface)]
 
@@ -41,6 +79,7 @@ def get_surface_performance(df,p,surface):
             win_percentage = None
         else:
             win_percentage = round((wins/matches * 100),1)
+
         surface_performance_dict = {}
         surface_performance_dict["surface_win_percentage"] = win_percentage
         surface_performance_dict["surface_matches"] = matches
@@ -48,10 +87,34 @@ def get_surface_performance(df,p,surface):
 
 def get_player_stats(df,p):
 
+    """
+    Returns comprehensive statistics for a player.
+
+    Args:
+        df: ATP match dataframe
+        p: Player name in dataset format e.g. 'Nadal R.'
+
+    Returns:
+        dict containing:
+            - overall_win_rate: win percentage across all matches
+            - win_rate_by_surface: win % for each surface
+            - higher_lower_win_rates: win % vs higher and lower ranked opponents
+            - best_tournament_stats: best tournament with win % and matches played
+            - recent_win_rate_stats: win % over last 20 matches
+        None if df is empty or player not found
+    """
+
     if len(df) == 0:
         return None
+    
     # get win rate
     fil = df[((df['Player_1'] == p) | (df['Player_2'] == p))]
+
+    if len(fil) == 0:
+        return None
+    
+    wins = len(fil[fil['Winner'] == p])
+    win_rate = round((wins/len(fil) * 100),1)
 
     recent_player_match = fil.sort_values('Date').iloc[-1]
     if recent_player_match["Player_1"] == p:
@@ -59,14 +122,6 @@ def get_player_stats(df,p):
     else:
         recent_player_rank = recent_player_match["Rank_2"]
    
-
-
-    wins = len(fil[fil['Winner'] == p])
-    if len(fil) == 0:
-        win_rate = None
-    else:
-        win_rate = round((wins/len(fil) * 100),1)
-
     # get win rate per surface
 
     surface_win_rates = {}
@@ -82,9 +137,9 @@ def get_player_stats(df,p):
 
     higher_lower_win_rates = {}
     # get win rate against higher/lower ranked opponents
-    #performance against BETTER players, here higher ranked players mean a BETTER rank
+    # performance against BETTER players, here higher ranked players mean a BETTER rank
     higher_fil = fil[((fil['Player_1'] == p) & (fil["Rank_1"] > fil["Rank_2"])) | ((fil['Player_2'] == p) & (fil["Rank_2"] > fil["Rank_1"]))]
-    #performance against WORSE players
+    # performance against WORSE players
     lower_fil = fil[((fil['Player_1'] == p) & (fil["Rank_1"] < fil["Rank_2"])) | ((fil['Player_2'] == p) & (fil["Rank_2"] < fil["Rank_1"]))]
     if len(higher_fil) == 0:
         higher_fil_win_rate = None
@@ -100,11 +155,12 @@ def get_player_stats(df,p):
     higher_lower_win_rates["win_rate_lower_rank"] = lower_fil_win_rate
 
     best_tournament_dict = {}
+
     # get mean win rate per tournament
     fil = fil.copy()
     fil['won'] = fil['Winner'] == p
 
-    # get meaning of minimum matches
+    # minimum matches depends on player rank
     if recent_player_rank > 50:
         minimum_matches = 10
     else:
@@ -134,8 +190,24 @@ def get_player_stats(df,p):
                   , "best_tournament_stats": best_tournament_dict, "recent_win_rate_stats": recent_win_rate_dict}
     return statistics
 
-# on_form_number controls how MANY players to list
+
 def get_on_form_players(df, surface = None, on_form_number = ON_FORM_NUMBER):
+
+    """
+    Returns the most in-form players based on recent win rate.
+
+    Args:
+        df: ATP match dataframe
+        surface: Optional surface filter e.g. 'Clay', 'Grass', 'Hard', 'Carpet'
+                If None or 'All', returns form across all surfaces
+        on_form_number: Number of players to return, defaults to ON_FORM_NUMBER constant
+
+    Returns:
+        DataFrame with columns 'matches_played' and 'win_rate', sorted by win rate descending
+        Only includes players with minimum 10 matches in last 3 months
+        Empty DataFrame if no players meet criteria
+        None if df is empty
+    """
 
     if len(df) == 0:
         return None
@@ -143,7 +215,7 @@ def get_on_form_players(df, surface = None, on_form_number = ON_FORM_NUMBER):
         fil = df[df["Surface"] == surface]
     else:
         fil = df.copy()
-    # cutoff date for best 'recent' form
+    # cutoff date for best 'recent' form is last 3 months
     cutoff_date = pd.Timestamp.now() - pd.DateOffset(months = 3)
     # convert date column to date time so can do comparison
     fil = fil[pd.to_datetime(fil['Date']) >= cutoff_date]
@@ -153,7 +225,7 @@ def get_on_form_players(df, surface = None, on_form_number = ON_FORM_NUMBER):
     combined_players["Won"] = combined_players["Winner"] == combined_players["Player"]
     # aggregate table has player name, count (matches played in last 3 months), and mean (win rate of these matches)
     player_forms = combined_players.groupby('Player')['Won'].agg(matches_played ="count", win_rate = "mean")
-    # minimum 10 matches seems reasonable
+    # minimum 10 matches is reasonable
     player_forms = player_forms[player_forms["matches_played"] >= 10]
     # sort descending
     player_forms = player_forms.sort_values("win_rate", ascending = False)
@@ -163,8 +235,28 @@ def get_on_form_players(df, surface = None, on_form_number = ON_FORM_NUMBER):
     return player_forms.head(on_form_number)
 
 def get_favourites(df, tournament):
+
+    """
+    Returns top 5 tournament favourites based on weighted scoring of rank, form, 
+    tournament history and surface performance.
+
+    Args:
+        df: ATP match dataframe
+        tournament: Tournament name matching dataset format e.g. 'Wimbledon', 'French Open'
+
+    Returns:
+        dict with keys 'Favourite 1' through 'Favourite 5' mapping to player names
+        None if tournament not found in dataset or df is empty
+
+    Scoring weights:
+        - Current ranking: 35%
+        - Recent form (last 3 months): 25%
+        - Tournament history (last 5 years): 25%
+        - Surface win rate (last 5 years): 15%
+    """
     if len(df) == 0:
         return None
+
     # get tournament's surface by getting surface of most recent tournament of its kind
 
     tournament_fil = df[(df["Tournament"] == tournament)]
@@ -174,10 +266,7 @@ def get_favourites(df, tournament):
     most_recent_tournament = tournament_fil.sort_values('Date').iloc[-1]
     surface = most_recent_tournament['Surface']
 
-
-
-
-    # get candidates
+    # get candidate players
 
     candidate_fil_p1 = df[['Date', 'Player_1', 'Rank_1', "Winner"]].rename(columns={'Player_1': 'Player', "Rank_1": "Rank"})
     candidate_fil_p2 = df[['Date', 'Player_2', 'Rank_2', "Winner"]].rename(columns={'Player_2': 'Player', "Rank_2": "Rank"})
@@ -187,8 +276,6 @@ def get_favourites(df, tournament):
     cutoff_date = pd.Timestamp.now() - pd.DateOffset(months = 12)
     # convert date column to date time so can do comparison
     candidate_fil = candidate_fil[pd.to_datetime(candidate_fil['Date']) >= cutoff_date]
-
-    #get the candidates
     
     # sort by date ascending
     candidate_fil = candidate_fil.sort_values('Date')
@@ -196,8 +283,7 @@ def get_favourites(df, tournament):
     most_recent_ranks = candidate_fil.groupby('Player').last()  
     candidates = most_recent_ranks[most_recent_ranks["Rank"] <= 100]
     candidates = candidates.sort_values("Rank")
-    #print(candidates.head(10))
-
+   
     # slim candidate history to mast 3 months for recent form
 
     form_cutoff_date = pd.Timestamp.now() - pd.DateOffset(months = 3)
@@ -270,6 +356,7 @@ def get_favourites(df, tournament):
         player_score = (0.35 * rank_score) + (0.25 * form_score) + (0.25 * tournament_score) + (0.15 * surface_score)
         scores[player] = float(player_score)
 
+    # output series saying favourite 1: player1, favourite 2: player2 etc...
     scores_series = pd.Series(scores)
     top_scores = scores_series.sort_values(ascending=False).head(5)
     favourites = {}
@@ -279,6 +366,22 @@ def get_favourites(df, tournament):
     return favourites
 
 def get_tournament_performance(df, p, tournament):
+
+    """
+    Returns a player's performance record at a specific tournament.
+
+    Args:
+        df: ATP match dataframe
+        p: Player name in dataset format e.g. 'Murray A.'
+        tournament: Tournament name matching dataset format e.g. 'Wimbledon'
+
+    Returns:
+        dict containing:
+            - tournament_win_percentage: win % at that tournament
+            - tournament_matches: total matches played at that tournament
+        None if player has not played at tournament, tournament not found, or df is empty
+    """
+
     if len(df) == 0:
         return None
     tournament_fil = df[((df['Player_1'] == p) | (df['Player_2'] == p)) & (df['Tournament'] == tournament)]

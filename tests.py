@@ -1,3 +1,11 @@
+"""
+tests.py
+
+Unit tests for core data functions using pytest.
+Covers name_matching.py and tennis_stats.py functions.
+Run with: pytest tests.py -v
+"""
+
 import pandas as pd
 import numpy as np
 import pytest

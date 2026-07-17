@@ -1,9 +1,23 @@
+"""
+evaluation.py
+
+Evaluation framework for intent classification accuracy testing.
+Tests classify_intent() against 104 labelled queries spanning 7 intents
+including both manually curated and LLM-generated test cases.
+
+Achieves 92.3% overall accuracy using batched LLM classification for efficiency.
+
+Usage:
+    python evaluation.py
+
+To regenerate test cases, uncomment generate_cases() in __main__.
+"""
+
 from llm import classify_intent_batch
-from llm_client import client
-import pandas as pd
+from llm_client import safe_llm_call
 import json
 import random
-
+import os
 
 manual_cases = [
 
@@ -29,7 +43,6 @@ manual_cases = [
 
     {"query": "what time is it", "expected_intent": "unknown", "source": "manual"},
     {"query": "capital of France", "expected_intent": "unknown", "source": "manual"},
-
 
     # slightly ambiguous ones
 
@@ -65,18 +78,26 @@ manual_cases = [
 ]
 
 def generate_test_cases_llm(intent, intent_description, n=10):
-    prompt = f"""Generate {n} diverse, realistic queries about ATP men's tour only for intent: {intent}.
-    Based off intent description: {intent_description}
-    Mix obvious, slightly ambiguous and ambiguous ones where intent is only implied. Return as a list, one per line."""
 
+    """
+    Generates n test cases for a given intent using the LLM.
 
-    response = client.chat.completions.create(
-    model="llama-3.3-70b-versatile",
+    Args:
+        intent: Intent name e.g. 'h2h', 'surface_performance'
+        intent_description: Description of the intent to guide generation
+        n: Number of test cases to generate, defaults to 10
+
+    Returns:
+        List of dicts with 'query', 'expected_intent' and 'source' keys
+    """
+    prompt = f"""Generate {n} diverse, realistic queries about ATP men's tour only for intent: {intent}
+            Based off intent description: {intent_description}
+            Mix obvious, slightly ambiguous and ambiguous ones where intent is only implied. Return as a list, one per line."""
+
     messages = [{"role": "user", "content": prompt}]
- 
-    )
+    response = safe_llm_call(messages, False)
 
-    # need list of dict
+    # parse LLM response into list of dicts, stripping numbering e.g. "1. query" -> "query"
 
     queries = response.choices[0].message.content.strip().split("\n")
     test_cases_llm = []
@@ -85,22 +106,36 @@ def generate_test_cases_llm(intent, intent_description, n=10):
 
     return test_cases_llm
 
-
 def evaluate(batch):
+
+    """
+    Evaluates a batch of test cases against the intent classifier.
+
+    Args:
+        batch: List of test case dicts with 'query' and 'expected_intent' keys
+
+    Returns:
+        Tuple of (correct_count, failures, intent_results) where:
+            - correct_count: number of correct classifications
+            - failures: list of dicts with 'query', 'expected' and 'predicted' keys
+            - intent_results: dict tracking correct/total counts per intent
+    """
     correct = 0
     failures = []
     queries = []
     intent_results = {}
 
+    # extract just the query strings for batch classification
     for test in batch:
         queries.append(test["query"])
-    # returns positionally-matched list e.g. ["h2h", "surface_performance",...]
+    
     predicted_intents = classify_intent_batch(queries)
 
     for j, test in enumerate(batch):
         predicted_intent = predicted_intents[j]
         expected_intent = test["expected_intent"]
         
+        # track per-intent accuracy
         if expected_intent not in intent_results:
             intent_results[expected_intent] = {"correct": 0, "total": 0}
 
@@ -119,23 +154,37 @@ def evaluate(batch):
     return correct, failures, intent_results
 
 def run_evaluation(batch_size = 10):
-    #generate_cases(10)
+
+    """
+    Runs the full evaluation across all test cases in batches.
+
+    Args:
+        batch_size: Number of test cases per batch API call, defaults to 10
+
+    Returns:
+        Tuple of (accuracy, total_failures, total_intent_results) where:
+            - accuracy: overall accuracy percentage e.g. 92.3
+            - total_failures: list of all failed test cases with expected vs predicted
+            - total_intent_results: dict with per-intent correct/total counts
+    """
+
     test_cases = load_cases()
+    # shuffle to avoid ordering bias in evaluation
     random.shuffle(test_cases)
     print(f"manual_cases: {len(manual_cases)}, llm_cases: {len(test_cases)-len(manual_cases)}")
-    #print(test_cases)
-
+    
     total_correct = 0
     total_failures = []
     total_intent_results = {}
-    # batch size 10, i inclusive, i+10 exclusive
+
     for i in range(0, len(test_cases), batch_size):
+        print(f"Evaluating batch {i//batch_size + 1}/{len(test_cases)//batch_size + 1}...")
         batch = test_cases[i:i+batch_size]
-        # PER BATCH
         correct, failures, intent_results = evaluate(batch)
         total_correct += correct
         total_failures.extend(failures)
 
+        # aggregate per-intent results across batches
         for intent, results in intent_results.items():
             if intent not in total_intent_results:
                 total_intent_results[intent] = {"correct": 0, "total": 0}
@@ -145,8 +194,16 @@ def run_evaluation(batch_size = 10):
     accuracy = round((total_correct/len(test_cases))*100,1)
     return accuracy, total_failures, total_intent_results
     
-
 def generate_cases(n=10):
+
+    """
+    Generates and saves test cases combining manual and LLM-generated cases.
+    Run once to create test_cases.json — uncomment in __main__ to regenerate.
+    
+    Args:
+        n: Number of LLM-generated cases per intent, defaults to 10
+    """
+
     intent_descriptions = {
     "h2h": "general head to head record between two players only across all tournaments",
     "surface_performance": "how a player performs on a specific surface or all surfaces",
@@ -162,19 +219,30 @@ def generate_cases(n=10):
         llm_cases.extend(generate_test_cases_llm(intent, description,n))
     all_cases = manual_cases + llm_cases
     with open("test_cases.json", "w") as f:
-        json.dump(all_cases, f, indent=2)
+        json.dump(all_cases, f, indent=4)
 
 def load_cases():
+
+    """
+    Loads test cases from test_cases.json.
+    
+    Returns:
+        List of test case dicts with 'query', 'expected_intent' and 'source' keys
+    """
+
+    if not os.path.exists("test_cases.json"):
+        raise FileNotFoundError("test_cases.json not found - run generate_cases() first")
     with open("test_cases.json", "r") as f:
         all_cases = json.load(f)
     return all_cases
 
-
-
-
 if __name__ == "__main__":
+    # uncomment to generate test cases
+    #generate_cases(10)
     accuracy, total_failures, total_intent_results = run_evaluation(10)
     print(f"accuracy: {accuracy}%")
-    #print(f"failures: {total_failures}")
     print(total_intent_results)
+    # uncomment to see individual failure cases:
+    #print(f"failures: {total_failures}")
+    
    
