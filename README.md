@@ -33,7 +33,7 @@ Example queries to try:
 - *"Who is playing well right now?"*
 - *"Murray at Roland Garros"*
 
-![Demo](demo.gif)
+![Demo](demo_gif.gif)
 
 ## Features
 
